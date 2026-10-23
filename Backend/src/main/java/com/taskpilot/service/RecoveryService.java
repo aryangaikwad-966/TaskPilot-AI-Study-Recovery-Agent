@@ -141,6 +141,9 @@ public class RecoveryService {
         prompt.append("- Be conservative in recommendations to avoid overwhelming the user\n");
         prompt.append("- If no tasks can reasonably be deferred, return empty arrays\n");
         prompt.append("- Return ONLY valid JSON, no additional text\n");
+        prompt.append("- Only use information present in the task list and the user's message. Do not invent deadlines, time constraints, academic priorities, emotional states, or cognitive states.\n");
+        prompt.append("- If information is missing, state it is unknown in assumptions rather than asserting it.\n");
+        prompt.append("- Recommended tasks are priority suggestions only; they are not automatically completed. Approval is required before any task is marked complete.\n");
 
         return prompt.toString();
     }

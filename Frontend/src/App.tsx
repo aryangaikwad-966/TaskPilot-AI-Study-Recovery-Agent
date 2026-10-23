@@ -213,7 +213,7 @@ function App() {
           {(view === 'overview' || view === 'recovery') && (
             <section className="panel">
               <div className="panel-header"><h2>AI recovery</h2></div>
-              <p className="panel-copy">Generates a proposal from current pending tasks. Approval completes only the recommended pending tasks. Cancel leaves the store unchanged.</p>
+              <p className="panel-copy">Generates a proposal from current pending tasks. Recommended tasks are priority suggestions only; approval completes only the explicitly recommended pending tasks. Cancel leaves the store unchanged.</p>
               {!recoveryProposal ? (
                 <>
                   <textarea className="recovery-input" placeholder="Describe the missed work. Example: I missed two days of DSA practice."

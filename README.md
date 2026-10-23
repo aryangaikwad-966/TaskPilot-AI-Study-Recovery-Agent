@@ -72,8 +72,8 @@ Backend (never put Gemini credentials in frontend files):
 
 ```bash
 export GEMINI_API_KEY=your_key
-# optional; default gemini-3.8-flash
-export GEMINI_MODEL=gemini-3.8-flash
+# optional; default gemini-3.1-flash-lite
+export GEMINI_MODEL=gemini-3.1-flash-lite
 # optional; default http://localhost:5173
 export TASKPILOT_CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```
@@ -126,7 +126,7 @@ Verified locally with Spring MockMvc and HTTP JSON-RPC. **Not verified** against
 
 Recovery and inspector calls run only on the backend. Missing `GEMINI_API_KEY` leaves task CRUD and MCP available. Recovery with pending tasks then returns HTTP 503. Empty pending lists return a no-op proposal without calling Gemini.
 
-The inspector may invoke MCP `list_tasks`. Recovery generation is structured JSON from pending titles, not a mutation tool. Live Gemini execution is **NOT VERIFIED** unless `GEMINI_API_KEY` is present in the local environment.
+The inspector may invoke MCP `list_tasks`. Recovery generation is structured JSON from pending titles, not a mutation tool. Live Gemini execution verified with gemini-3.1-flash-lite when GEMINI_API_KEY is present. Recovery uses real pending task data; inspector uses MCP list_tasks.
 
 ## Hackathon route
 

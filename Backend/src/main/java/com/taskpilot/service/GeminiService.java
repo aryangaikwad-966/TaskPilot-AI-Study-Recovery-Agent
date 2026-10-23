@@ -110,6 +110,12 @@ public class GeminiService implements ChatService {
             if (functionCall != null) {
                 String toolName = functionCall.path("name").asText();
                 JsonNode toolArgs = functionCall.path("args");
+                String thoughtSignature = null;
+                // thought signature may be sibling of functionCall in the part
+                try {
+                    JsonNode part0 = responseNode.path("candidates").get(0).path("content").path("parts").get(0);
+                    if (part0.has("thoughtSignature")) thoughtSignature = part0.get("thoughtSignature").asText();
+                } catch (Exception ignored) {}
 
                 // --- Step 3: Validate tool name ---
                 if (!isValidTool(toolName)) {
@@ -121,7 +127,7 @@ public class GeminiService implements ChatService {
                 String mcpResult = mcpClientAdapter.executeTool(toolName, toolArgs);
 
                 // --- Step 5: Send result back to Gemini for final response ---
-                String followUpRequest = buildFollowUpRequest(userMessage, toolName, toolArgs, mcpResult);
+                String followUpRequest = buildFollowUpRequest(userMessage, toolName, toolArgs, mcpResult, thoughtSignature);
                 String finalGeminiResponse = callGeminiApi(followUpRequest);
 
                 if (finalGeminiResponse == null) {
@@ -168,7 +174,7 @@ public class GeminiService implements ChatService {
     }
 
     private String buildFollowUpRequest(String originalMessage, String toolName,
-                                         JsonNode toolArgs, String toolResult) throws Exception {
+                                          JsonNode toolArgs, String toolResult, String thoughtSignature) throws Exception {
         JsonNode toolsNode = objectMapper.readTree(TOOL_DECLARATIONS);
         ObjectNode request = objectMapper.createObjectNode();
 
@@ -184,7 +190,10 @@ public class GeminiService implements ChatService {
         modelContent.put("role", "model");
         ArrayNode modelParts = modelContent.putArray("parts");
         ObjectNode funcCallPart = modelParts.addObject();
-        ObjectNode funcCall = funcCallPart.putObject("function_call");
+        if (thoughtSignature != null) {
+            funcCallPart.put("thoughtSignature", thoughtSignature);
+        }
+        ObjectNode funcCall = funcCallPart.putObject("functionCall");
         funcCall.put("name", toolName);
         funcCall.set("args", toolArgs);
 
@@ -192,7 +201,7 @@ public class GeminiService implements ChatService {
         ObjectNode toolContent = contents.addObject();
         toolContent.put("role", "user");
         ArrayNode toolParts = toolContent.putArray("parts");
-        ObjectNode funcResp = toolParts.addObject().putObject("function_response");
+        ObjectNode funcResp = toolParts.addObject().putObject("functionResponse");
         funcResp.put("name", toolName);
         funcResp.set("response", objectMapper.readTree(toolResult));
 
@@ -215,7 +224,7 @@ public class GeminiService implements ChatService {
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() != 200) {
-            logger.warning("Gemini API returned HTTP " + response.statusCode());
+            logger.warning("Gemini API returned HTTP " + response.statusCode() + ": " + response.body());
             throw new RuntimeException("Gemini API returned HTTP " + response.statusCode());
         }
 
