@@ -6,6 +6,8 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -15,12 +17,21 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        String[] origins = Arrays.stream(allowedOrigins.split(","))
-                .map(String::trim)
-                .filter(origin -> !origin.isBlank())
-                .toArray(String[]::new);
+        Set<String> origins = new LinkedHashSet<>();
+        // Always allow local development and the verified production frontend.
+        origins.add("http://localhost:5173");
+        origins.add("https://task-pilot-ai-study-recovery-agent.vercel.app");
+        for (String part : allowedOrigins.split(",")) {
+            String origin = part.trim();
+            if (origin.endsWith("/")) {
+                origin = origin.substring(0, origin.length() - 1);
+            }
+            if (!origin.isBlank()) {
+                origins.add(origin);
+            }
+        }
         registry.addMapping("/**")
-                .allowedOrigins(origins)
+                .allowedOrigins(origins.toArray(String[]::new))
                 .allowedMethods("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("MCP-Session-Id", "MCP-Protocol-Version");
