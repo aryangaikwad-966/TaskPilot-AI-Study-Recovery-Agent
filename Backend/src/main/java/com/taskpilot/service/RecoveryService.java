@@ -75,7 +75,18 @@ public class RecoveryService {
             }
 
             if (apiKey == null || apiKey.isBlank()) {
-                throw new IllegalStateException("Gemini API key not configured.");
+                logger.warning("Gemini API key not configured; using local fallback recovery plan.");
+                List<String> pendingTitles = pendingTasks.stream()
+                    .map(Task::getTitle)
+                    .collect(Collectors.toList());
+                List<String> recommended = pendingTitles.stream().limit(2).collect(Collectors.toList());
+                List<String> deferred = pendingTitles.stream().skip(2).collect(Collectors.toList());
+                return new RecoveryResponse(
+                    "Gemini API key is not configured, so this is a local fallback plan. I've prioritized the first few pending tasks.",
+                    recommended,
+                    deferred,
+                    List.of("Set GEMINI_API_KEY to enable AI-generated recovery plans.")
+                );
             }
 
             // Build prompt with task context
