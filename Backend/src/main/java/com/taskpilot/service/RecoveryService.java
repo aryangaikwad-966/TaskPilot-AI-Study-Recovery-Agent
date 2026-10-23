@@ -224,6 +224,13 @@ public class RecoveryService {
             .filter(pendingTitles::contains)
             .collect(Collectors.toList());
 
+        // If no valid recommendations, use deterministic fallback
+        if (recommendedTasks.isEmpty() && !pendingTasks.isEmpty()) {
+            recommendedTasks = pendingTitles.stream().limit(2).collect(Collectors.toList());
+            deferredTasks = pendingTitles.stream().skip(2).collect(Collectors.toList());
+            assumptions = List.of("Gemini did not return usable recommendations; showing a conservative fallback.");
+        }
+
         return new RecoveryResponse(explanation, recommendedTasks, deferredTasks, assumptions);
     }
 
