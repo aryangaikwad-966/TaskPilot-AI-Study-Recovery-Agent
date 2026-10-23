@@ -312,17 +312,6 @@ TaskPilot provides a self-hosted MCP server for compatible clients. It is not an
 - [Hackathon website](https://amazonappdev2026.devpost.com/)
 - [Official rules](https://amazonappdev2026.devpost.com/rules)
 
-## Application Screenshots
-
-| Screenshot | Description |
-|---|---|
-| ![Dashboard](artifacts/screenshots/taskpilot-dashboard.png) | Dashboard with task list and status |
-| ![Tasks](artifacts/screenshots/taskpilot-tasks.png) | Pending and completed tasks |
-| ![AI Recovery](artifacts/screenshots/taskpilot-ai-recovery.png) | Recovery proposal |
-| ![Task Inspector](artifacts/screenshots/taskpilot-task-inspector.png) | Inspector response |
-| ![MCP Evidence](artifacts/screenshots/taskpilot-mcp-evidence.png) | MCP tool evidence |
-| ![Approval](artifacts/screenshots/taskpilot-approval.png) | Approval result |
-
 ## License
 
 This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
