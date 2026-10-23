@@ -146,8 +146,8 @@ class ChatControllerTest {
         mockMvc.perform(post("/api/recovery")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"message\":\"I missed two days\"}"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.error").exists());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assumptions").isArray());
     }
 
     @Test

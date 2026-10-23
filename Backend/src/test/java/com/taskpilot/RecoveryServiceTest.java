@@ -90,9 +90,10 @@ class RecoveryServiceTest {
 
         taskService.addTask("Test task");
 
-        assertThrows(RuntimeException.class, () -> {
-            recoveryService.generateRecovery("Help me recover");
-        });
+        // Now returns a local fallback instead of throwing
+        var response = recoveryService.generateRecovery("Help me recover");
+        assertNotNull(response);
+        assertTrue(response.getAssumptions().stream().anyMatch(a -> a.contains("GEMINI_API_KEY")));
     }
 
     @Test
