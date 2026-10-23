@@ -7,7 +7,9 @@ import type {
   ChatResponse,
 } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (import.meta.env.PROD ? 'https://taskpilot-ai-study-recovery-agent.onrender.com' : 'http://localhost:8080');
 
 class ApiClient {
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
