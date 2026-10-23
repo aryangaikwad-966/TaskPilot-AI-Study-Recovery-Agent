@@ -10,7 +10,7 @@ import java.util.Arrays;
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    @Value("${taskpilot.cors.allowed-origins:http://localhost:5173}")
+    @Value("${taskpilot.cors.allowed-origins:http://localhost:5173,https://task-pilot-ai-study-recovery-agent.vercel.app}")
     private String allowedOrigins;
 
     @Override
@@ -21,7 +21,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .toArray(String[]::new);
         registry.addMapping("/**")
                 .allowedOrigins(origins)
-                .allowedMethods("GET", "POST", "PATCH", "DELETE", "OPTIONS")
+                .allowedMethods("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
                 .exposedHeaders("MCP-Session-Id", "MCP-Protocol-Version");
     }
