@@ -6,9 +6,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -30,7 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @RestController
 @RequestMapping("/mcp")
-@CrossOrigin(origins = "${taskpilot.cors.allowed-origins:http://localhost:5173}")
 public class McpProtocolController {
 
     public static final String PROTOCOL_VERSION = "2025-11-25";
@@ -47,14 +47,31 @@ public class McpProtocolController {
         this.taskTools = taskTools;
     }
 
-    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
+    @GetMapping
+    public ResponseEntity<?> sseNotOffered() {
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("error", "SSE notifications are not offered. Use POST /mcp with JSON-RPC over Streamable HTTP.");
+        body.put("protocolVersion", PROTOCOL_VERSION);
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
+    }
+
+    @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> handle(
             @RequestBody JsonNode request,
+            @RequestHeader(value = HttpHeaders.ACCEPT, required = false) String accept,
             @RequestHeader(value = SESSION_HEADER, required = false) String sessionId,
             @RequestHeader(value = VERSION_HEADER, required = false) String protocolVersion) {
+        if (!acceptsJson(accept)) {
+            return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(error(request.path("id"), -32600,
+                            "Client must Accept application/json (text/event-stream is optional)."));
+        }
         if (!request.isObject() || !"2.0".equals(request.path("jsonrpc").asText())
                 || !request.path("method").isTextual()) {
-            return json(error(request.path("id"), -32600, "Invalid JSON-RPC request."));
+            return json(error(request.path("id"), -32600, "Invalid JSON-RPC request."), sessionId);
         }
 
         String method = request.path("method").asText();
@@ -66,27 +83,30 @@ public class McpProtocolController {
         }
 
         if (!validSession(sessionId) || !PROTOCOL_VERSION.equals(protocolVersion)) {
-            return json(error(id, -32000, "Initialize first with MCP 2025-11-25."));
+            return json(error(id, -32000, "Initialize first with MCP 2025-11-25."), sessionId);
         }
 
         if (McpSchema.METHOD_NOTIFICATION_INITIALIZED.equals(method)) {
-            return ResponseEntity.accepted().build();
+            return ResponseEntity.accepted()
+                    .header(SESSION_HEADER, sessionId)
+                    .header(VERSION_HEADER, PROTOCOL_VERSION)
+                    .build();
         }
         if (McpSchema.METHOD_PING.equals(method)) {
-            return json(result(id, objectMapper.createObjectNode()));
+            return json(result(id, objectMapper.createObjectNode()), sessionId);
         }
         if (McpSchema.METHOD_TOOLS_LIST.equals(method)) {
-            return json(result(id, toolsList()));
+            return json(result(id, toolsList()), sessionId);
         }
         if (McpSchema.METHOD_TOOLS_CALL.equals(method)) {
-            return json(callTool(id, params));
+            return json(callTool(id, params), sessionId);
         }
-        return json(error(id, -32601, "Method not found: " + method));
+        return json(error(id, -32601, "Method not found: " + method), sessionId);
     }
 
     private ResponseEntity<?> initialize(JsonNode id, JsonNode params) {
         if (!params.isObject() || !PROTOCOL_VERSION.equals(params.path("protocolVersion").asText())) {
-            return json(error(id, -32602, "Supported protocol version is " + PROTOCOL_VERSION + "."));
+            return json(error(id, -32602, "Supported protocol version is " + PROTOCOL_VERSION + "."), null);
         }
         String sessionId = UUID.randomUUID().toString();
         sessions.put(sessionId, Instant.now());
@@ -201,8 +221,19 @@ public class McpProtocolController {
         return response;
     }
 
-    private ResponseEntity<ObjectNode> json(ObjectNode response) {
-        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(response);
+    private ResponseEntity<ObjectNode> json(ObjectNode response, String sessionId) {
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON);
+        if (sessionId != null && !sessionId.isBlank()) {
+            builder.header(SESSION_HEADER, sessionId).header(VERSION_HEADER, PROTOCOL_VERSION);
+        }
+        return builder.body(response);
+    }
+
+    private boolean acceptsJson(String accept) {
+        if (accept == null || accept.isBlank() || "*/*".equals(accept.trim())) {
+            return true;
+        }
+        return accept.contains(MediaType.APPLICATION_JSON_VALUE);
     }
 
     private boolean validSession(String sessionId) {

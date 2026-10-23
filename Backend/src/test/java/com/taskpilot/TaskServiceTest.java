@@ -189,4 +189,17 @@ class TaskServiceTest {
         List<Task> completed = taskService.listTasks("COMPLETED");
         assertTrue(completed.isEmpty(), "Should return empty list when no completed tasks");
     }
+
+    @Test
+    @Order(11)
+    @DisplayName("counts: pending and completed stay consistent after mutations")
+    void testCounts() {
+        Task t1 = taskService.addTask("One");
+        taskService.addTask("Two");
+        assertEquals(2, taskService.countByStatus(Task.Status.PENDING));
+        assertEquals(0, taskService.countByStatus(Task.Status.COMPLETED));
+        taskService.completeTask(t1.getId());
+        assertEquals(1, taskService.countByStatus(Task.Status.PENDING));
+        assertEquals(1, taskService.countByStatus(Task.Status.COMPLETED));
+    }
 }

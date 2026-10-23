@@ -1,46 +1,42 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from './api';
 import type { Task, TaskFilter, RecoveryProposal } from './types';
-import { CheckSquare, Plus, BookOpen, AlertCircle, Loader2, X } from 'lucide-react';
-import Avatar from './components/Avatar';
+import { AlertCircle, Check, Loader2, Plus, X } from 'lucide-react';
 import './App.css';
-
-function getGreeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
 
 function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(0);
   const [filter, setFilter] = useState<TaskFilter>('ALL');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [recoveryProposal, setRecoveryProposal] = useState<RecoveryProposal | null>(null);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
-  const greeting = getGreeting();
-  const [avatarExpression, setAvatarExpression] = useState<'neutral' | 'hyper-focus' | 'cosmic-wonder' | 'glitch-alert' | 'zen-mode'>('neutral');
+  const [approving, setApproving] = useState(false);
+  const [chatMessage, setChatMessage] = useState('');
+  const [chatReply, setChatReply] = useState<string | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const applyList = (response: { tasks: Task[]; pendingCount?: number; completedCount?: number }) => {
+    setTasks(response.tasks);
+    setPendingCount(response.pendingCount ?? response.tasks.filter((t) => t.status === 'PENDING').length);
+    setCompletedCount(response.completedCount ?? response.tasks.filter((t) => t.status === 'COMPLETED').length);
+  };
 
   const loadTasks = useCallback(async () => {
-    try {
-      const response = await api.getTasks(filter);
-      setTasks(response.tasks);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load tasks');
-    } finally {
-      setLoading(false);
-    }
+    const response = await api.getTasks(filter);
+    applyList(response);
   }, [filter]);
 
   useEffect(() => {
     let active = true;
     api.getTasks(filter)
       .then((response) => {
-        if (active) setTasks(response.tasks);
+        if (active) applyList(response);
       })
       .catch((err: unknown) => {
         if (active) setError(err instanceof Error ? err.message : 'Failed to load tasks');
@@ -54,8 +50,8 @@ function App() {
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-
     try {
+      setError(null);
       await api.createTask({ title: newTaskTitle.trim() });
       setNewTaskTitle('');
       await loadTasks();
@@ -66,6 +62,7 @@ function App() {
 
   const handleCompleteTask = async (taskId: string) => {
     try {
+      setError(null);
       await api.completeTask(taskId);
       await loadTasks();
     } catch (err) {
@@ -75,23 +72,14 @@ function App() {
 
   const handleGenerateRecovery = async () => {
     if (!recoveryMessage.trim()) return;
-
     try {
       setRecoveryLoading(true);
       setError(null);
-      setAvatarExpression('hyper-focus');
+      setNotice(null);
       const proposal = await api.generateRecovery({ message: recoveryMessage });
       setRecoveryProposal(proposal);
-      setAvatarExpression('cosmic-wonder');
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to generate recovery plan';
-      // Provide a more helpful message for API key issues
-      if (errorMessage.includes('API key') || errorMessage.includes('503')) {
-        setError('Gemini API key not configured. Please set GEMINI_API_KEY environment variable on the backend.');
-      } else {
-        setError(errorMessage);
-      }
-      setAvatarExpression('glitch-alert');
+      setError(err instanceof Error ? err.message : 'Failed to generate recovery plan');
     } finally {
       setRecoveryLoading(false);
     }
@@ -99,19 +87,29 @@ function App() {
 
   const handleApproveRecovery = async () => {
     if (!recoveryProposal) return;
-
     try {
-      const taskIds = tasks
-        .filter(t => recoveryProposal.recommendedTasks.includes(t.title))
-        .map(t => t.id);
+      setApproving(true);
+      setError(null);
+      const allTasks = await api.getTasks('ALL');
+      const recommended = new Set(recoveryProposal.recommendedTasks);
+      const taskIds = allTasks.tasks
+        .filter((task) => task.status === 'PENDING' && recommended.has(task.title))
+        .map((task) => task.id);
 
-      await api.approveRecovery(taskIds);
+      if (taskIds.length === 0) {
+        setError('No matching pending tasks remain for this proposal.');
+        return;
+      }
+
+      const result = await api.approveRecovery(taskIds);
       setRecoveryProposal(null);
       setRecoveryMessage('');
-      setShowRecovery(false);
+      setNotice(`Completed ${result.completed.length} recommended task${result.completed.length === 1 ? '' : 's'}.`);
       await loadTasks();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to approve recovery plan');
+    } finally {
+      setApproving(false);
     }
   };
 
@@ -120,172 +118,96 @@ function App() {
     setRecoveryMessage('');
   };
 
-  const pendingCount = tasks.filter(t => t.status === 'PENDING').length;
-  const completedCount = tasks.filter(t => t.status === 'COMPLETED').length;
+  const handleReviseRecovery = () => {
+    setRecoveryProposal(null);
+  };
+
+  const handleChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatMessage.trim()) return;
+    try {
+      setChatLoading(true);
+      setError(null);
+      const response = await api.chat(chatMessage.trim());
+      if (!response.success) {
+        setError(response.error || 'Chat request failed');
+        setChatReply(null);
+        return;
+      }
+      setChatReply(response.reply ?? '');
+      setChatMessage('');
+      await loadTasks();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Chat request failed');
+    } finally {
+      setChatLoading(false);
+    }
+  };
 
   return (
     <div className="app">
       <header className="header">
-        <div className="header-content">
-          <div className="logo">
-            <Avatar expression={avatarExpression} size={60} />
-            <div className="logo-text">
-              <h1>TaskPilot</h1>
-              <p className="tagline">Recover your study momentum</p>
-            </div>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <div>
+            <h1>TaskPilot</h1>
+            <p className="tagline">AI Study Recovery Agent</p>
           </div>
         </div>
+        <p className="header-meta">In-memory workspace. REST and MCP share the same task store.</p>
       </header>
 
       <main className="main">
-        <div className="greeting-section">
-          <h2>{greeting}! Ready to study?</h2>
-          <p className="today-focus">Today's focus: {pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? 's' : ''}` : 'No pending tasks'}</p>
-        </div>
-
-        <div className="stats">
-          <div className="stat-card">
-            <div className="stat-value">{pendingCount}</div>
-            <div className="stat-label">Pending</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">{completedCount}</div>
-            <div className="stat-label">Completed</div>
-          </div>
-        </div>
+        <section className="stats" aria-label="Task counts">
+          <article className="stat-card">
+            <p className="stat-label">Pending</p>
+            <p className="stat-value">{pendingCount}</p>
+          </article>
+          <article className="stat-card">
+            <p className="stat-label">Completed</p>
+            <p className="stat-value">{completedCount}</p>
+          </article>
+          <article className="stat-card">
+            <p className="stat-label">Total</p>
+            <p className="stat-value">{pendingCount + completedCount}</p>
+          </article>
+        </section>
 
         {error && (
-          <div className="error-banner">
-            <AlertCircle className="error-icon" />
+          <div className="banner error" role="alert">
+            <AlertCircle size={16} />
             <span>{error}</span>
-            <button onClick={() => setError(null)} className="error-close">
-              <X size={16} />
+            <button type="button" onClick={() => setError(null)} aria-label="Dismiss error">
+              <X size={14} />
             </button>
           </div>
         )}
 
-        <div className="actions">
-          <button
-            className="recovery-button"
-            onClick={() => setShowRecovery(!showRecovery)}
-          >
-            <BookOpen size={20} />
-            {showRecovery ? 'Hide Recovery' : 'Recover my study plan'}
-          </button>
-        </div>
-
-        {showRecovery && (
-          <div className="recovery-panel">
-            {!recoveryProposal ? (
-              <>
-                <textarea
-                  className="recovery-input"
-                  placeholder="Tell TaskPilot what went wrong with your study schedule..."
-                  value={recoveryMessage}
-                  onChange={(e) => setRecoveryMessage(e.target.value)}
-                  rows={4}
-                />
-                <div className="example-prompts">
-                  <p className="examples-label">Example prompts:</p>
-                  <button
-                    className="example-prompt"
-                    onClick={() => setRecoveryMessage('I missed two days of DSA practice.')}
-                  >
-                    "I missed two days of DSA practice."
-                  </button>
-                  <button
-                    className="example-prompt"
-                    onClick={() => setRecoveryMessage('I have too many pending tasks for tomorrow.')}
-                  >
-                    "I have too many pending tasks for tomorrow."
-                  </button>
-                  <button
-                    className="example-prompt"
-                    onClick={() => setRecoveryMessage('Help me prioritize Java revision and binary search.')}
-                  >
-                    "Help me prioritize Java revision and binary search."
-                  </button>
-                </div>
-                <button
-                  className="generate-button"
-                  onClick={handleGenerateRecovery}
-                  disabled={!recoveryMessage.trim() || recoveryLoading}
-                >
-                  {recoveryLoading ? (
-                    <>
-                      <Loader2 className="spinner" size={16} />
-                      Generating plan...
-                    </>
-                  ) : (
-                    'Generate recovery plan'
-                  )}
-                </button>
-              </>
-            ) : (
-              <div className="recovery-proposal">
-                <h3>Recovery Proposal</h3>
-                <p className="proposal-explanation">{recoveryProposal.explanation}</p>
-
-                {recoveryProposal.recommendedTasks.length > 0 && (
-                  <div className="proposal-section">
-                    <h4>Recommended for today</h4>
-                    <ul className="proposal-list">
-                      {recoveryProposal.recommendedTasks.map((task, i) => (
-                        <li key={i}>{task}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {recoveryProposal.deferredTasks.length > 0 && (
-                  <div className="proposal-section">
-                    <h4>Can wait</h4>
-                    <ul className="proposal-list">
-                      {recoveryProposal.deferredTasks.map((task, i) => (
-                        <li key={i}>{task}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {recoveryProposal.assumptions && recoveryProposal.assumptions.length > 0 && (
-                  <div className="proposal-section">
-                    <h4>Assumptions</h4>
-                    <ul className="proposal-list">
-                      {recoveryProposal.assumptions.map((assumption, i) => (
-                        <li key={i}>{assumption}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="proposal-actions">
-                  <button className="approve-button" onClick={handleApproveRecovery} disabled={recoveryProposal.recommendedTasks.length === 0}>
-                    Approve plan
-                  </button>
-                  <button className="revise-button" onClick={handleCancelRecovery}>
-                    Revise request
-                  </button>
-                  <button className="cancel-button" onClick={handleCancelRecovery}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
+        {notice && (
+          <div className="banner success" role="status">
+            <Check size={16} />
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss notice">
+              <X size={14} />
+            </button>
           </div>
         )}
 
-        <div className="task-section">
-          <div className="task-header">
-            <h3>Tasks</h3>
-            <div className="task-filters">
-              {(['ALL', 'PENDING', 'COMPLETED'] as TaskFilter[]).map((f) => (
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Task workspace</h2>
+            <div className="task-filters" role="tablist" aria-label="Task filters">
+              {(['ALL', 'PENDING', 'COMPLETED'] as TaskFilter[]).map((item) => (
                 <button
-                  key={f}
-                  className={`filter-button ${filter === f ? 'active' : ''}`}
-                  onClick={() => setFilter(f)}
+                  key={item}
+                  type="button"
+                  className={`filter-button ${filter === item ? 'active' : ''}`}
+                  onClick={() => {
+                    setLoading(true);
+                    setFilter(item);
+                  }}
                 >
-                  {f}
+                  {item}
                 </button>
               ))}
             </div>
@@ -295,49 +217,163 @@ function App() {
             <input
               type="text"
               className="task-input"
-              placeholder="Add a new task..."
+              placeholder="Add a task"
               value={newTaskTitle}
               onChange={(e) => setNewTaskTitle(e.target.value)}
+              maxLength={300}
+              aria-label="New task title"
             />
-            <button type="submit" className="add-button" disabled={!newTaskTitle.trim()}>
-              <Plus size={18} />
+            <button type="submit" className="primary-button" disabled={!newTaskTitle.trim()}>
+              <Plus size={16} />
+              Add
             </button>
           </form>
 
           {loading ? (
-            <div className="loading-state">
-              <Loader2 className="spinner" size={24} />
-              <p>Loading tasks...</p>
+            <div className="state">
+              <Loader2 className="spinner" size={18} />
+              Loading tasks
             </div>
           ) : tasks.length === 0 ? (
-            <div className="empty-state">
-              <CheckSquare size={48} className="empty-icon" />
-              <p>No tasks yet. Add your first task above!</p>
+            <div className="state">
+              No tasks in this view. Add a task to populate the recovery workflow.
             </div>
           ) : (
             <ul className="task-list">
               {tasks.map((task) => (
-                <li key={task.id} className={`task-item ${task.status.toLowerCase()}`}>
+                <li key={task.id} className="task-item">
                   <div className="task-content">
                     <span className="task-title">{task.title}</span>
-                    <span className={`task-status ${task.status.toLowerCase()}`}>
-                      {task.status}
-                    </span>
+                    <span className={`task-status ${task.status.toLowerCase()}`}>{task.status}</span>
                   </div>
                   {task.status === 'PENDING' && (
                     <button
-                      className="complete-button"
+                      type="button"
+                      className="ghost-button"
                       onClick={() => handleCompleteTask(task.id)}
-                      aria-label="Complete task"
                     >
-                      <CheckSquare size={18} />
+                      Complete
                     </button>
                   )}
                 </li>
               ))}
             </ul>
           )}
-        </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <h2>AI recovery</h2>
+          </div>
+          <p className="panel-copy">
+            Generates a proposal from current pending tasks. Approval completes only the recommended pending tasks. Cancel leaves the store unchanged.
+          </p>
+
+          {!recoveryProposal ? (
+            <>
+              <textarea
+                className="recovery-input"
+                placeholder="Describe the missed work. Example: I missed two days of DSA practice."
+                value={recoveryMessage}
+                onChange={(e) => setRecoveryMessage(e.target.value)}
+                rows={4}
+                aria-label="Recovery request"
+              />
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleGenerateRecovery}
+                disabled={!recoveryMessage.trim() || recoveryLoading}
+              >
+                {recoveryLoading ? (
+                  <>
+                    <Loader2 className="spinner" size={16} />
+                    Generating
+                  </>
+                ) : (
+                  'Generate proposal'
+                )}
+              </button>
+            </>
+          ) : (
+            <div className="recovery-proposal">
+              <p className="proposal-explanation">{recoveryProposal.explanation}</p>
+
+              {recoveryProposal.recommendedTasks.length > 0 && (
+                <div className="proposal-section">
+                  <h3>Prioritize</h3>
+                  <ul>
+                    {recoveryProposal.recommendedTasks.map((task) => (
+                      <li key={task}>{task}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {recoveryProposal.deferredTasks.length > 0 && (
+                <div className="proposal-section">
+                  <h3>Defer</h3>
+                  <ul>
+                    {recoveryProposal.deferredTasks.map((task) => (
+                      <li key={task}>{task}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {recoveryProposal.assumptions && recoveryProposal.assumptions.length > 0 && (
+                <div className="proposal-section">
+                  <h3>Assumptions</h3>
+                  <ul>
+                    {recoveryProposal.assumptions.map((assumption) => (
+                      <li key={assumption}>{assumption}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="proposal-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleApproveRecovery}
+                  disabled={recoveryProposal.recommendedTasks.length === 0 || approving}
+                >
+                  {approving ? 'Approving' : 'Approve'}
+                </button>
+                <button type="button" className="ghost-button" onClick={handleReviseRecovery}>
+                  Revise
+                </button>
+                <button type="button" className="ghost-button" onClick={handleCancelRecovery}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <h2>Task inspector</h2>
+          </div>
+          <p className="panel-copy">
+            Sends the prompt to Gemini. The assistant may call <code>list_tasks</code> over MCP. It cannot add or complete tasks from this panel.
+          </p>
+          <form className="add-task-form" onSubmit={handleChat}>
+            <input
+              type="text"
+              className="task-input"
+              placeholder="Ask for a read-only task summary"
+              value={chatMessage}
+              onChange={(e) => setChatMessage(e.target.value)}
+              aria-label="Inspector prompt"
+            />
+            <button type="submit" className="primary-button" disabled={!chatMessage.trim() || chatLoading}>
+              {chatLoading ? <Loader2 className="spinner" size={16} /> : 'Ask'}
+            </button>
+          </form>
+          {chatReply && <pre className="chat-reply">{chatReply}</pre>}
+        </section>
       </main>
     </div>
   );

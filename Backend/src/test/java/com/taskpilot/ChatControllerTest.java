@@ -1,21 +1,21 @@
 package com.taskpilot;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.taskpilot.dto.ChatRequest;
-import com.taskpilot.dto.ChatResponse;
+import com.taskpilot.model.Task;
 import com.taskpilot.service.ChatService;
 import com.taskpilot.service.TaskService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.hasSize;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -42,8 +42,8 @@ class ChatControllerTest {
     @Autowired
     private TaskService taskService;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    @Value("${gemini.api.key:}")
+    private String apiKey;
 
     @BeforeEach
     void setUp() {
@@ -111,12 +111,60 @@ class ChatControllerTest {
     }
 
     @Test
-    @DisplayName("/api/health: returns UP status")
+    @DisplayName("/api/health: reports Streamable HTTP MCP 2025-11-25")
     void testHealthEndpoint() throws Exception {
         mockMvc.perform(get("/api/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.status").value("UP"));
+                .andExpect(jsonPath("$.mcp_endpoint").value("POST /mcp"))
+                .andExpect(jsonPath("$.mcp_spec").value("2025-11-25"))
+                .andExpect(jsonPath("$.transport").value("Streamable HTTP (JSON response)"));
+    }
+
+    @Test
+    @DisplayName("/api/tasks: filtered list still returns overall dashboard counts")
+    void testListTasksEndpoint_includesOverallCounts() throws Exception {
+        var pending = taskService.addTask("Pending task");
+        var done = taskService.addTask("Done task");
+        taskService.completeTask(done.getId());
+
+        mockMvc.perform(get("/api/tasks").param("status", "PENDING"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.tasks[0].id").value(pending.getId()))
+                .andExpect(jsonPath("$.pendingCount").value(1))
+                .andExpect(jsonPath("$.completedCount").value(1));
+    }
+
+    @Test
+    @DisplayName("/api/recovery: missing key with pending tasks returns 503")
+    void testRecoveryWithoutApiKey() throws Exception {
+        if (apiKey != null && !apiKey.isBlank()) {
+            return;
+        }
+        taskService.addTask("Study Java");
+        mockMvc.perform(post("/api/recovery")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"message\":\"I missed two days\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    @DisplayName("/api/recovery/approve: completes only valid pending tasks")
+    void testApproveRecovery() throws Exception {
+        var pending = taskService.addTask("Approve me");
+        var alreadyDone = taskService.addTask("Already done");
+        taskService.completeTask(alreadyDone.getId());
+
+        mockMvc.perform(post("/api/recovery/approve")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"taskIds\":[\"" + pending.getId() + "\",\"" + alreadyDone.getId() + "\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.completed", hasSize(1)))
+                .andExpect(jsonPath("$.completed[0]").value(pending.getId()));
+
+        assertEquals(Task.Status.COMPLETED, taskService.findById(pending.getId()).orElseThrow().getStatus());
     }
 
     @Test

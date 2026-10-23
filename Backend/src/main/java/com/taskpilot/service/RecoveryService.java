@@ -180,12 +180,10 @@ public class RecoveryService {
             throw new RuntimeException("No text in Gemini response");
         }
 
-        // Try to parse as JSON
         JsonNode proposalNode;
         try {
-            proposalNode = objectMapper.readTree(text);
+            proposalNode = objectMapper.readTree(unwrapJson(text));
         } catch (Exception e) {
-            // If not valid JSON, create a fallback response
             logger.warning("Gemini did not return valid JSON, using fallback");
             return createFallbackResponse(text, pendingTasks);
         }
@@ -240,6 +238,18 @@ public class RecoveryService {
             }
         }
         return result;
+    }
+
+    private String unwrapJson(String text) {
+        String trimmed = text.trim();
+        if (trimmed.startsWith("```")) {
+            int newline = trimmed.indexOf('\n');
+            int fence = trimmed.lastIndexOf("```");
+            if (newline >= 0 && fence > newline) {
+                trimmed = trimmed.substring(newline + 1, fence).trim();
+            }
+        }
+        return trimmed;
     }
 
     private RecoveryResponse createFallbackResponse(String rawText, List<Task> pendingTasks) {

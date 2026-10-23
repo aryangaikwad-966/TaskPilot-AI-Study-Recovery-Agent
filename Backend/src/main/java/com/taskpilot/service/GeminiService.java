@@ -90,8 +90,7 @@ public class GeminiService implements ChatService {
 
         // Check API key
         if (apiKey == null || apiKey.isBlank()) {
-            return "⚠️ Gemini API key not configured. Set GEMINI_API_KEY and restart the server.\n" +
-                   "You can still use MCP tools directly at POST /mcp.";
+            return "Gemini API key not configured. Set GEMINI_API_KEY on the backend and restart. MCP tools remain available at POST /mcp.";
         }
 
         try {
@@ -117,12 +116,9 @@ public class GeminiService implements ChatService {
                     return "Error: Unknown tool requested by Gemini: " + toolName;
                 }
 
-                logger.info("Gemini requested tool: " + toolName + " with args: " + toolArgs);
+                logger.info("Gemini requested tool: " + toolName);
 
-                // --- Step 4: Execute via MCP (actual protocol call) ---
                 String mcpResult = mcpClientAdapter.executeTool(toolName, toolArgs);
-
-                logger.info("MCP result: " + mcpResult);
 
                 // --- Step 5: Send result back to Gemini for final response ---
                 String followUpRequest = buildFollowUpRequest(userMessage, toolName, toolArgs, mcpResult);

@@ -8,6 +8,8 @@ export interface Task {
 export interface TaskListResponse {
   tasks: Task[];
   count: number;
+  pendingCount: number;
+  completedCount: number;
 }
 
 export interface CreateTaskRequest {
@@ -25,9 +27,9 @@ export interface RecoveryProposal {
   assumptions?: string[];
 }
 
-export interface ApiResponse<T> {
+export interface ChatResponse {
   success: boolean;
-  data?: T;
+  reply?: string;
   error?: string;
 }
 

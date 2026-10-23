@@ -96,6 +96,10 @@ public class TaskService {
         return taskStore.size();
     }
 
+    public int countByStatus(Task.Status status) {
+        return (int) taskStore.values().stream().filter(t -> t.getStatus() == status).count();
+    }
+
     /** Clears all tasks — for test isolation only. */
     public void clearAll() {
         taskStore.clear();

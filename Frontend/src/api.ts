@@ -1,4 +1,11 @@
-import type { Task, TaskListResponse, CreateTaskRequest, RecoveryRequest, RecoveryProposal } from './types';
+import type {
+  Task,
+  TaskListResponse,
+  CreateTaskRequest,
+  RecoveryRequest,
+  RecoveryProposal,
+  ChatResponse,
+} from './types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
@@ -49,6 +56,13 @@ class ApiClient {
     return this.request<{ completed: string[] }>('/api/recovery/approve', {
       method: 'POST',
       body: JSON.stringify({ taskIds }),
+    });
+  }
+
+  async chat(message: string): Promise<ChatResponse> {
+    return this.request<ChatResponse>('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message }),
     });
   }
 }

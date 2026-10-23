@@ -5,7 +5,6 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,7 +37,6 @@ import com.taskpilot.service.TaskService;
  */
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "${taskpilot.cors.allowed-origins:http://localhost:5173}")
 public class ChatController {
 
     private final ChatService chatService;
@@ -88,7 +86,12 @@ public class ChatController {
                     "createdAt", t.getCreatedAt().toString()
                 ))
                 .collect(Collectors.toList());
-            return ResponseEntity.ok(Map.of("tasks", result, "count", result.size()));
+            return ResponseEntity.ok(Map.of(
+                "tasks", result,
+                "count", result.size(),
+                "pendingCount", taskService.countByStatus(Task.Status.PENDING),
+                "completedCount", taskService.countByStatus(Task.Status.COMPLETED)
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
@@ -167,7 +170,11 @@ public class ChatController {
                 return ResponseEntity.badRequest().body(Map.of("error", "One or more task IDs are invalid."));
             }
 
-            List<String> completedIds = taskIds.stream().distinct().peek(taskService::completeTask).toList();
+            List<String> completedIds = taskIds.stream()
+                    .distinct()
+                    .filter(id -> taskService.findById(id).map(t -> t.getStatus() == Task.Status.PENDING).orElse(false))
+                    .peek(taskService::completeTask)
+                    .toList();
 
             return ResponseEntity.ok(Map.of("completed", completedIds));
         } catch (Exception e) {
@@ -183,9 +190,9 @@ public class ChatController {
         return ResponseEntity.ok(Map.of(
             "status", "UP",
             "service", "TaskPilot",
-            "mcp_endpoint", "GET /mcp/sse; POST /mcp/message",
-            "mcp_spec", "Legacy version; does not satisfy hackathon minimum 2025-11-25",
-            "transport", "Legacy SSE configured; Streamable HTTP is required for Alexa+ self-hosted MCP"
+            "mcp_endpoint", "POST /mcp",
+            "mcp_spec", "2025-11-25",
+            "transport", "Streamable HTTP (JSON response)"
         ));
     }
 }

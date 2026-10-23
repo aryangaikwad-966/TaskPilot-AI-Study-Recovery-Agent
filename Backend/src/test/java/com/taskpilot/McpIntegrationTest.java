@@ -12,6 +12,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -36,9 +37,19 @@ class McpIntegrationTest {
         String id = addPayload.path("task_id").asText();
         assertEquals("PENDING", taskService.findById(id).orElseThrow().getStatus().name());
 
+        JsonNode listedViaRest = objectMapper.readTree(
+                mockMvc.perform(get("/api/tasks")).andExpect(status().isOk()).andReturn()
+                        .getResponse().getContentAsString());
+        assertEquals(1, listedViaRest.path("pendingCount").asInt());
+
         JsonNode completed = call(session, 4, "tools/call", "{\"name\":\"complete_task\",\"arguments\":{\"task_id\":\"" + id + "\"}}");
         assertFalse(completed.path("result").path("isError").asBoolean());
         assertEquals("COMPLETED", taskService.findById(id).orElseThrow().getStatus().name());
+    }
+
+    @Test
+    void getMcpDoesNotAdvertiseLegacySse() throws Exception {
+        mockMvc.perform(get("/mcp")).andExpect(status().isMethodNotAllowed());
     }
 
     @Test
