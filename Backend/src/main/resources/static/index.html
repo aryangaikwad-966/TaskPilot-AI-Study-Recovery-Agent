@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="TaskPilot – AI-powered study task assistant. Manage your study tasks with natural language powered by Gemini AI and MCP protocol.">
+    <title>TaskPilot – AI Study Task Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background particles -->
+    <div class="bg-gradient"></div>
+    <div class="particles" id="particles"></div>
+
+    <div class="app-container">
+
+        <!-- ===== HEADER ===== -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-group">
+                    <div class="logo-icon">
+                        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                            <path d="M14 2L26 8V20L14 26L2 20V8L14 2Z" fill="url(#logoGrad)" stroke="rgba(255,255,255,0.2)" stroke-width="0.5"/>
+                            <path d="M14 8L20 11V17L14 20L8 17V11L14 8Z" fill="rgba(255,255,255,0.15)"/>
+                            <path d="M14 11L17 12.5V15.5L14 17L11 15.5V12.5L14 11Z" fill="white" opacity="0.9"/>
+                            <defs>
+                                <linearGradient id="logoGrad" x1="2" y1="2" x2="26" y2="26">
+                                    <stop offset="0%" stop-color="#6366f1"/>
+                                    <stop offset="100%" stop-color="#8b5cf6"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="logo-name">TaskPilot</h1>
+                        <p class="logo-tagline">Your AI-powered study task assistant</p>
+                    </div>
+                </div>
+                <div class="header-badges">
+                    <span class="badge badge-mcp">MCP SSE Transport</span>
+                    <span class="badge badge-gemini">Gemini AI</span>
+                    <div class="status-dot" id="statusDot" title="Server status"></div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <main class="main-content">
+
+            <!-- Left: Chat Panel -->
+            <section class="chat-panel" aria-label="AI Chat">
+                <div class="panel-header">
+                    <span class="panel-icon">💬</span>
+                    <span class="panel-title">Chat with TaskPilot</span>
+                </div>
+
+                <!-- Chat messages -->
+                <div class="messages-area" id="messagesArea" role="log" aria-live="polite">
+                    <div class="message assistant-message welcome-message">
+                        <div class="message-avatar">🤖</div>
+                        <div class="message-bubble">
+                            <p>Hi! I'm TaskPilot, your AI study assistant. I use <strong>Gemini AI</strong> and the <strong>MCP protocol</strong> to manage your tasks.</p>
+                            <p>Try saying:</p>
+                            <ul class="example-list">
+                                <li onclick="fillInput(this)">📚 Add a task to practise Java DSA</li>
+                                <li onclick="fillInput(this)">📋 Show all my pending tasks</li>
+                                <li onclick="fillInput(this)">✅ Show all my completed tasks</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input area -->
+                <div class="input-area">
+                    <div class="input-wrapper">
+                        <textarea
+                            id="messageInput"
+                            class="message-input"
+                            placeholder="Ask TaskPilot anything... e.g. 'Add a task to study algorithms'"
+                            rows="1"
+                            aria-label="Message input"
+                            onkeydown="handleKeyDown(event)"
+                        ></textarea>
+                        <button
+                            id="sendBtn"
+                            class="send-btn"
+                            onclick="sendMessage()"
+                            aria-label="Send message"
+                        >
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <path d="M18 10L2 3L6 10L2 17L18 10Z" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="input-hint">Press Enter to send · Shift+Enter for new line</p>
+                </div>
+            </section>
+
+            <!-- Right: Task Panel -->
+            <aside class="task-panel" aria-label="Task List">
+                <div class="panel-header">
+                    <span class="panel-icon">📋</span>
+                    <span class="panel-title">My Tasks</span>
+                    <button class="refresh-btn" onclick="loadTasks()" id="refreshBtn" aria-label="Refresh tasks">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M13 1v4h-4M1 13V9h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M1.05 9A6 6 0 1 0 2.5 4.5L1 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Filter buttons -->
+                <div class="filter-bar" role="group" aria-label="Task filter">
+                    <button class="filter-btn active" id="filter-ALL" onclick="filterTasks('ALL')">All</button>
+                    <button class="filter-btn" id="filter-PENDING" onclick="filterTasks('PENDING')">Pending</button>
+                    <button class="filter-btn" id="filter-COMPLETED" onclick="filterTasks('COMPLETED')">Done</button>
+                </div>
+
+                <!-- Task list -->
+                <div class="task-list" id="taskList" aria-label="Task items">
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-icon">🎯</div>
+                        <p>No tasks yet. Ask TaskPilot to add one!</p>
+                    </div>
+                </div>
+
+                <!-- Task count -->
+                <div class="task-footer">
+                    <span id="taskCount" class="task-count">0 tasks</span>
+                    <div class="mcp-badge">
+                        <span class="mcp-dot"></span>
+                        <span>MCP Active</span>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- MCP Debug Panel (collapsible) -->
+        <section class="mcp-panel" id="mcpPanel">
+            <div class="mcp-panel-header" onclick="toggleMcpPanel()">
+                <span>🔌 MCP Protocol Debugger</span>
+                <span class="mcp-panel-toggle" id="mcpToggle">▼</span>
+            </div>
+            <div class="mcp-panel-body" id="mcpPanelBody" style="display:none">
+                <p class="mcp-info">Direct MCP tool calls — bypasses Gemini, talks directly to the MCP server.
+                SSE endpoints: <code>GET /mcp/sse</code> (subscribe) → <code>POST /mcp/message</code> (JSON-RPC)</p>
+                <div class="mcp-controls">
+                    <select id="mcpTool" class="mcp-select" aria-label="Select MCP tool">
+                        <option value="add_task">add_task</option>
+                        <option value="list_tasks">list_tasks</option>
+                        <option value="complete_task">complete_task</option>
+                        <option value="tools/list">tools/list (discover)</option>
+                    </select>
+                    <textarea id="mcpArgs" class="mcp-args" rows="3" placeholder='{"title": "My Task"}'></textarea>
+                    <button class="mcp-call-btn" onclick="callMcpDirect()" id="mcpCallBtn">Call MCP Tool</button>
+                </div>
+                <pre class="mcp-output" id="mcpOutput">// MCP response will appear here</pre>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>TaskPilot · Amazon Developer Hackathon 2026 · Alexa+ Track · MCP Spec 2025-11-25 · Built with Spring Boot + Gemini AI</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
