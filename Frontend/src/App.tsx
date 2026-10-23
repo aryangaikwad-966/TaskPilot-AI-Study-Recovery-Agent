@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from './api';
 import type { Task, TaskFilter, RecoveryProposal } from './types';
-import { AlertCircle, Check, Loader2, Plus, X, LayoutDashboard, ListTodo, Sparkles, Terminal } from 'lucide-react';
+import { AlertCircle, Check, Loader2, Plus, X, LayoutDashboard, ListTodo, Sparkles, Terminal, Trash2 } from 'lucide-react';
 import './App.css';
 
 type View = 'overview' | 'tasks' | 'recovery' | 'inspector';
@@ -55,6 +55,13 @@ function App() {
     } catch (err) { setError(err instanceof Error ? err.message : 'Failed to add task'); }
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      setError(null);
+      await api.deleteTask(taskId);
+      await loadTasks();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Failed to delete task'); }
+  };
   const handleCompleteTask = async (taskId: string) => {
     try {
       setError(null);
@@ -203,6 +210,9 @@ function App() {
                       {task.status === 'PENDING' && (
                         <button type="button" className="ghost-button" onClick={() => handleCompleteTask(task.id)}>Complete</button>
                       )}
+                      <button type="button" className="ghost-button" onClick={() => handleDeleteTask(task.id)} aria-label="Delete task">
+                        <Trash2 size={14} />
+                      </button>
                     </li>
                   ))}
                 </ul>

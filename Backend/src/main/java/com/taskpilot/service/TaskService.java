@@ -84,6 +84,15 @@ public class TaskService {
         return task;
     }
 
+    public void deleteTask(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("Task ID must not be empty.");
+        }
+        if (taskStore.remove(taskId.trim()) == null) {
+            throw new IllegalArgumentException("No task found with ID: " + taskId);
+        }
+    }
+
     /**
      * Finds a task by ID (used for testing/inspection).
      */

@@ -138,8 +138,17 @@ public class ChatController {
     }
 
     /**
-     * Generates a recovery proposal based on the user's request.
+     * Deletes a task.
      */
+    @DeleteMapping("/tasks/{id}")
+    public ResponseEntity<?> deleteTask(@PathVariable String id) {
+        try {
+            taskService.deleteTask(id);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
     @PostMapping("/recovery")
     public ResponseEntity<?> generateRecovery(@RequestBody RecoveryRequest request) {
         try {

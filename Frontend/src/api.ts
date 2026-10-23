@@ -41,6 +41,10 @@ class ApiClient {
     });
   }
 
+  async deleteTask(taskId: string): Promise<void> {
+    await this.request<void>(`/api/tasks/${taskId}`, { method: 'DELETE' });
+  }
+
   async completeTask(taskId: string): Promise<Task> {
     return this.request<Task>(`/api/tasks/${taskId}/complete`, {
       method: 'PATCH',
