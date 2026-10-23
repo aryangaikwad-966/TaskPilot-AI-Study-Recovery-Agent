@@ -1,32 +1,31 @@
 # TaskPilot — AI Study Recovery Agent
 
-Recover missed study work by ranking **actual pending tasks**, then executing only the tasks a user explicitly approves.
+[![Frontend](https://img.shields.io/badge/Frontend-Vercel-black?logo=vercel)](https://task-pilot-ai-study-recovery-agent.vercel.app/)
+[![Backend](https://img.shields.io/badge/Backend-Render-46E3B7?logo=render)](https://taskpilot-ai-study-recovery-agent.onrender.com)
+[![Source](https://img.shields.io/badge/Source-GitHub-181717?logo=github)](https://github.com/aryangaikwad-966/TaskPilot-AI-Study-Recovery-Agent)
 
-## Problem and solution
+TaskPilot is an AI-assisted study recovery application that helps students turn missed study sessions into actionable recovery proposals while keeping task changes under user control.
 
-When study time is missed, a task list is not a plan. TaskPilot generates a recovery proposal from the live pending store, shows recommended and deferred work, and completes recommended tasks only after approval. Cancel leaves state unchanged.
+## Overview
 
-## Core features
+Students can fall behind because of missed study sessions, deadlines, and competing tasks. Simply generating a generic schedule may not explain what to prioritize, defer, or recover. TaskPilot addresses this by:
 
-- Create, list, filter, and complete in-memory study tasks.
-- Dashboard counts are store-wide, independent of the current list filter.
-- Recovery proposals are built from current pending tasks. The proposal itself does not mutate tasks.
-- Approve completes matching pending tasks. Cancel and revise do not write the store.
-- Read-only Gemini inspector may call MCP `list_tasks`. It cannot add or complete tasks.
-- Self-hosted MCP tools: `add_task`, `list_tasks`, `complete_task`. REST and MCP share one `TaskService`.
+1. Managing study tasks through a dashboard and MCP tools.
+2. Generating a proposed recovery plan from real pending tasks via Gemini.
+3. Requiring user review and approval before any supported task change.
+4. Offering a read-only Task Inspector that uses MCP `list_tasks`.
 
-Task data is lost on backend restart. There is no calendar, deadline, auth, or durable persistence layer.
+The AI proposes a plan; the user retains control over supported state-changing operations.
 
-## Distinctive approach
+## Key features
 
-Recovery is an approval workflow, not autonomous mutation. Gemini is used for proposal text and for optional read-only inspection. MCP is the tool surface for task operations, including the inspector’s `list_tasks` call.
-
-## Technology stack
-
-- Java 17, Spring Boot 3.3, Jackson
-- React 19, TypeScript, Vite
-- Gemini `generateContent` from the backend (`x-goog-api-key`)
-- Official MCP Java schemas (`io.modelcontextprotocol.sdk`, 2.0.1) plus a custom Streamable HTTP JSON-RPC endpoint
+- **Task management** — create, list, filter (ALL / PENDING / COMPLETED), and complete in-memory study tasks.
+- **AI recovery proposals** — Gemini generates explanation, recommended priorities, deferred items, and assumptions from real pending tasks.
+- **Explicit approval/cancellation** — Approve completes only matching pending recommended tasks; Cancel and Revise leave state unchanged.
+- **Read-only Task Inspector** — sends prompts to Gemini, which may call MCP `list_tasks` only. It cannot add or complete tasks.
+- **MCP tool surface** — `add_task`, `list_tasks`, `complete_task` over Streamable HTTP JSON-RPC, sharing the same `TaskService` as REST.
+- **Deterministic fallback** — when `GEMINI_API_KEY` is missing, recovery returns a clearly-labelled local fallback proposal instead of calling Gemini.
+- **Error handling** — missing key, API errors, timeouts, and invalid tool calls are handled safely.
 
 ## Architecture
 
@@ -51,113 +50,146 @@ flowchart LR
   REST --> Store
 ```
 
-## End-to-end workflow
+## Technology stack
 
-1. Add pending tasks in the dashboard (or via MCP `add_task`).
-2. Describe missed work in **AI recovery**.
-3. Review explanation, priorities, deferred items, and assumptions.
-4. Approve to complete recommended pending tasks, or cancel with no writes.
-5. Optionally ask the inspector for a read-only summary (`list_tasks` over MCP).
+| Technology | Purpose |
+|---|---|
+| Java 17 | Backend runtime |
+| Spring Boot 3.3 | REST API, MCP endpoint |
+| Maven | Build tool |
+| React 19 | Frontend UI |
+| TypeScript | Frontend typing |
+| Vite | Frontend bundler/dev server |
+| Gemini API | AI recovery + inspector |
+| MCP Java SDK schemas 2.0.1 | MCP protocol types |
+| JUnit 5 + Mockito | Backend tests |
+| Vercel | Frontend hosting |
+| Render | Backend hosting |
+
+## MCP integration
+
+- **Endpoint:** `POST /mcp`
+- **Protocol version:** `2025-11-25`
+- **Transport:** Streamable HTTP (JSON responses; `GET /mcp` returns 405)
+- **Negotiation:** client sends `initialize` with `protocolVersion: "2025-11-25"` and `Accept: application/json, text/event-stream`; server returns the same protocol version and an `MCP-Session-Id`; later requests include `MCP-Protocol-Version: 2025-11-25`.
+
+Tools:
+
+| Tool | Inputs | Effect |
+|---|---|---|
+| `add_task` | `title` (string) | Creates a task |
+| `list_tasks` | `status`: ALL / PENDING / COMPLETED | Reads tasks |
+| `complete_task` | `task_id` | Marks task COMPLETED |
+
+All tools operate on the same in-memory `TaskService` as REST. REST and MCP share one store.
+
+Example discovery/invocation uses standard JSON-RPC `initialize` → `notifications/initialized` → `tools/list` / `tools/call`. Verified locally via Spring MockMvc and direct HTTP; not verified against a third-party MCP client binary or Alexa+ production.
+
+## AI recovery workflow
+
+1. Backend loads current pending tasks from `TaskService`.
+2. `RecoveryService` builds a prompt using only task titles and the user message; it instructs Gemini not to invent deadlines, time constraints, or preferences.
+3. Gemini returns structured JSON (explanation, recommendedTasks, deferredTasks, assumptions).
+4. Proposal is returned to the frontend without mutating tasks.
+5. **Approve** completes only matching pending recommended tasks.
+6. **Cancel/Revise** leave state unchanged.
+7. Missing key → local fallback proposal (clearly labelled). API errors/timeouts handled safely.
+
+## REST API
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/tasks?status=ALL\|PENDING\|COMPLETED` | List tasks + counts |
+| POST | `/api/tasks` | Create task (`{title}`) |
+| PATCH | `/api/tasks/{id}/complete` | Complete task |
+| POST | `/api/recovery` | Generate recovery proposal |
+| POST | `/api/recovery/approve` | Approve proposal (`{taskIds}`) |
+| POST | `/api/chat` | Read-only inspector |
+
+## Project structure
+
+```
+Taskpilot/
+├── Backend/
+│   ├── pom.xml
+│   ├── Dockerfile
+│   └── src/main/java/com/taskpilot/
+│       ├── controller/ChatController.java
+│       ├── service/{TaskService,GeminiService,RecoveryService,ChatService}.java
+│       ├── mcp/{McpProtocolController,McpClientAdapter,TaskMcpTools}.java
+│       └── model/Task.java
+├── Frontend/
+│   ├── package.json
+│   └── src/{App.tsx,App.css,api.ts,types.ts}
+└── README.md
+```
 
 ## Prerequisites
 
 - Java 17+
 - Maven 3.6+
 - Node.js 18+ and npm
-- `GEMINI_API_KEY` only for live recovery and inspector calls
+- `GEMINI_API_KEY` (only for live recovery/inspector)
 
-## Environment
-
-Backend (never put Gemini credentials in frontend files):
+## Local setup
 
 ```bash
-export GEMINI_API_KEY=your_key
-# optional; default gemini-3.1-flash-lite
-export GEMINI_MODEL=gemini-3.1-flash-lite
-# optional; default http://localhost:5173
-export TASKPILOT_CORS_ALLOWED_ORIGINS=http://localhost:5173
-```
-
-Frontend (browser-visible API location only):
-
-```bash
-printf 'VITE_API_BASE_URL=http://localhost:8080\n' > Frontend/.env
-```
-
-`.env` files are gitignored.
-
-## Run
-
-```bash
-# Terminal 1
+# Backend
 cd Backend
+export GEMINI_API_KEY=YOUR_GEMINI_API_KEY
 mvn spring-boot:run
 
-# Terminal 2
+# Frontend (another terminal)
 cd Frontend
 npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. `http://localhost:8080` is the API process.
+Open `http://localhost:5173`. API at `http://localhost:8080`.
 
-## Tests and verification
+Frontend API base URL (optional): create `Frontend/.env` with `VITE_API_BASE_URL=http://localhost:8080`.
+
+## Environment variables
+
+| Variable | Service | Purpose | Required? |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Backend | Gemini auth | For live AI |
+| `GEMINI_MODEL` | Backend | Model name (default gemini-3.1-flash-lite) | No |
+| `TASKPILOT_CORS_ALLOWED_ORIGINS` | Backend | CORS origins (default http://localhost:5173) | No |
+| `PORT` | Backend/Render | Listen port (default 8080) | No |
+| `VITE_API_BASE_URL` | Frontend | Backend URL | For prod |
+
+Gemini credentials stay backend-only. Never commit secrets or expose them via `VITE_` variables.
+
+## Testing
 
 ```bash
-cd Backend && mvn test && mvn package
-cd ../Frontend && npm run build && npm run lint
+cd Backend && mvn test
+cd Frontend && npm run build && npm run lint
 ```
 
-## MCP
+Backend: 40 tests pass. Frontend: build and lint pass.
 
-Implemented protocol: **MCP 2025-11-25**. Transport: **Streamable HTTP** with JSON responses on `POST /mcp`. SSE notifications are not offered (`GET /mcp` returns 405).
+## Deployment
 
-Handshake:
+- Frontend: https://task-pilot-ai-study-recovery-agent.vercel.app/
+- Backend: https://taskpilot-ai-study-recovery-agent.onrender.com
 
-1. `POST /mcp` `initialize` with `protocolVersion: "2025-11-25"`, `Accept: application/json, text/event-stream`.
-2. Keep `MCP-Session-Id`. Send `MCP-Protocol-Version: 2025-11-25` on later requests.
-3. `notifications/initialized` (HTTP 202), then `tools/list` or `tools/call`.
+Frontend is hosted on Vercel; backend on Render. Set `VITE_API_BASE_URL` to the Render URL for production and configure CORS accordingly. Task state is in-memory and may be lost on restart/redeploy.
 
-Tools: `add_task` (`title`), `list_tasks` (`status`: ALL | PENDING | COMPLETED), `complete_task` (`task_id`).
+## Security and limitations
 
-Verified locally with Spring MockMvc and HTTP JSON-RPC. **Not verified** against Alexa+ production, Amazon’s MCP inspector, or a third-party Streamable HTTP client binary in this environment.
-
-## Gemini
-
-Recovery and inspector calls run only on the backend. Missing `GEMINI_API_KEY` leaves task CRUD and MCP available. Recovery with pending tasks then returns HTTP 503. Empty pending lists return a no-op proposal without calling Gemini.
-
-The inspector may invoke MCP `list_tasks`. Recovery generation is structured JSON from pending titles, not a mutation tool. Live Gemini execution verified with gemini-3.1-flash-lite when GEMINI_API_KEY is present. Recovery uses real pending task data; inspector uses MCP list_tasks.
-
-## Hackathon route
-
-Official sources: [hackathon home](https://amazonappdev2026.devpost.com/) and [official rules](https://amazonappdev2026.devpost.com/rules).
-
-Alexa+ allows either:
-
-1. A self-hosted MCP server, spec **2025-11-25+**, Streamable HTTP, or an Agent Skill.
-2. A simulated Alexa+ experience in a web app.
-
-TaskPilot targets route 1. The repository contains a runtime MCP JSON-RPC server at `POST /mcp`. Judges, not this README, decide track eligibility. This project is **not** an Alexa Agent Skill and has **not** been connected to Alexa+.
-
-## Known limitations
-
-- In-memory store only.
-- No authentication.
-- Streamable HTTP here returns JSON; it does not open an SSE stream.
-- Gemini model availability depends on the configured `GEMINI_MODEL`.
+- No authentication or user isolation.
+- In-memory storage only (state lost on restart).
+- No durable persistence, calendar, or deadline logic.
+- Gemini model availability depends on configured model.
 - Duplicate task titles can all match a recommended title on approve.
+- Streamable HTTP returns JSON; no SSE stream.
 
-## Demo
+## Hackathon context
 
-1. Add three pending study tasks.
-2. Generate a recovery proposal from a missed-work prompt.
-3. Approve and confirm dashboard counts.
-4. `initialize` + `tools/list` + `tools/call` on `POST /mcp`, then refresh the dashboard.
+TaskPilot targets the **Alexa+ track** of the Amazon Developer Hackathon 2026. It is a self-hosted MCP server (protocol 2025-11-25, Streamable HTTP) exposing task operations to compatible MCP clients. It is not an Alexa Agent Skill and has not been connected to Alexa+ or AWS production. Official rules: https://amazonappdev2026.devpost.com/rules
 
-## Submission assets
+## License
 
-- Demo video URL: **TODO**
-- Public or reviewer-shared GitHub URL: **TODO**
-- Devpost product feedback: **TODO**
-
-License: MIT (`LICENSE`).
+MIT (`LICENSE`).
